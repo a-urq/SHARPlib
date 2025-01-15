@@ -8,7 +8,7 @@
  * \date   2022-10-13
  *
  * Written for the NWS Storm Predidiction Center \n
- * Based on NSHARP routines originally written by
+ * Based on NSHARP routines originally written byms-vscode.cpptools
  * John Hart and Rich Thompson at SPC.
  */
 
@@ -192,10 +192,13 @@ float entrainment_cape(const float pressure[], const float height[],
     constexpr float L = 120.0;
     const float H =
         interp_pressure(pcl->eql_pressure, pressure, height, N) - hsfc;
-    constexpr float sigma = 1.6;
+    constexpr float sigma = 1.1; // Value was changed from 1.6 in the preprint
+                                 // 1.1 in the final published version
     constexpr float alpha = 0.8;
     const float pitchfork = (VKSQ * (alpha * alpha) * (PI * PI) * L) /
-                            (PRANDTL * (sigma * sigma) * H);
+                            (4 * PRANDTL * (sigma * sigma) * H);
+                            // Amelia: I emailed John about this and he said
+                            // there should be a four in the denominator
     const float V_sr_tilde = V_sr_mean / std::sqrt(2.0f * pcl->cape);
     const float V_sr_tilde_sq = V_sr_tilde * V_sr_tilde;
     const float N_tilde = NCAPE / pcl->cape;

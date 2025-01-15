@@ -360,20 +360,26 @@ float moist_adiabat_cm1(float pressure, float temperature, float new_pressure,
     return pcl_t_next;
 }
 
+const float DEFAULT_WARMEST_MIXED_PHASE_TEMP = 253.15;
+const float DEFAULT_COLDEST_MIXED_PHASE_TEMP = 253.15;
 /**
  * \author Amelia Urquhart - OU-SoM
  * 
  * Helper method for the Peters et al 2022 saturated lapse rate.
  */
-float ice_fraction(float temperature, float warmest_mixed_phase_temp,
-                    float coldest_mixed_phase_temp) {
-    if(temperature >= warmest_mixed_phase_temp) {
+float ice_fraction(float temperature, 
+                    std::optional<float> warmest_mixed_phase_temp,
+                    std::optional<float> coldest_mixed_phase_temp) {
+    float wmpt = warmest_mixed_phase_temp
+                    .value_or(DEFAULT_WARMEST_MIXED_PHASE_TEMP);
+    float cmpt = coldest_mixed_phase_temp
+                    .value_or(DEFAULT_COLDEST_MIXED_PHASE_TEMP);
+    if(temperature >= wmpt) {
         return 0;
-    } else if (temperature <= coldest_mixed_phase_temp) {
+    } else if (temperature <= cmpt) {
         return 1;
     } else {
-        return (1 / (coldest_mixed_phase_temp - warmest_mixed_phase_temp))
-            * (temperature - warmest_mixed_phase_temp);
+        return (1 / (cmpt - wmpt)) * (temperature - wmpt);
     }
 }
 
@@ -382,14 +388,19 @@ float ice_fraction(float temperature, float warmest_mixed_phase_temp,
  * 
  * Helper method for the Peters et al 2022 saturated lapse rate.
  */
-float deriv_ice_fraction(float temperature, float warmest_mixed_phase_temp,
-                    float coldest_mixed_phase_temp) {
-    if(temperature >= warmest_mixed_phase_temp) {
+float deriv_ice_fraction(float temperature,
+                    std::optional<float> warmest_mixed_phase_temp,
+                    std::optional<float> coldest_mixed_phase_temp) {
+    float wmpt = warmest_mixed_phase_temp
+                    .value_or(DEFAULT_WARMEST_MIXED_PHASE_TEMP);
+    float cmpt = coldest_mixed_phase_temp
+                    .value_or(DEFAULT_COLDEST_MIXED_PHASE_TEMP);
+    if(temperature >= wmpt) {
         return 0;
-    } else if (temperature <= coldest_mixed_phase_temp) {
+    } else if (temperature <= cmpt) {
         return 0;
     } else {
-        return (1 / (coldest_mixed_phase_temp - warmest_mixed_phase_temp));
+        return (1 / (cmpt - wmpt));
     }
 }
 
@@ -399,8 +410,8 @@ float deriv_ice_fraction(float temperature, float warmest_mixed_phase_temp,
  * Helper method for the Peters et al 2022 saturated lapse rate.
  */
 float saturation_mixing_ratio(float pressure, float temperature, int ice_flag,
-                float warmest_mixed_phase_temp,
-                float coldest_mixed_phase_temp) {
+                    std::optional<float> warmest_mixed_phase_temp,
+                    std::optional<float> coldest_mixed_phase_temp) {
 
     float term_1, term_2, r_sat;
     
@@ -535,12 +546,27 @@ float saturated_adiabatic_lapse_rate_peters_et_al(float temperature,
  */
 float moist_adiabat_peters_et_al(float pressure, float temperature,
                                       float new_pressure, float& qv, float& qt,
-									  Profile* prof,
+									  const float pressure_arr[], 
+                                      const float height_arr[],
+                                      const float temperature_arr[], 
+                                      const float dewpoint_arr[],
+                                      const float u_wind_arr[], 
+                                      const float v_wind_arr[], 
+                                      const std::ptrdiff_t N,
                                       const float pres_incr,
                                       float entrainment_rate,
                                       const ascent_type ma_type,
                                       const float warmest_mixed_phase_temp,
                                       const float coldest_mixed_phase_temp) {
+    // Mixing ratio array creation
+    float *mixr_arr = new float[N];
+    const float hsfc = height_arr[0];
+    for (int k = 0; k < N; ++k) {
+        const float dwpk = dewpoint_arr[k];
+        const float rv = mixratio(pressure_arr[k], dwpk);
+        mixr_arr[k] = rv;
+    }
+
     // Used to keep track of the index used for interpolation of the 
     // environmental profile. Removing the need to search for these each
     // iteration should save some computation time.
@@ -573,10 +599,10 @@ float moist_adiabat_peters_et_al(float pressure, float temperature,
         if(profile_index_0 == MISSING) {
             need_to_find_index = true;
         } else {
-            int profile_index_1 = std::min(profile_index_0 + 1, prof->NZ - 1);
+            int profile_index_1 = std::min(profile_index_0 + 1, (int) N - 1);
 
-            float pres_bottom_of_layer = prof->pres[profile_index_0];
-            float pres_top_of_layer = prof->pres[profile_index_1];
+            float pres_bottom_of_layer = pressure_arr[profile_index_0];
+            float pres_top_of_layer = pressure_arr[profile_index_1];
 
             if(pres_bottom_of_layer != pres_top_of_layer 
                 && pressure < pres_top_of_layer) {
@@ -588,13 +614,13 @@ float moist_adiabat_peters_et_al(float pressure, float temperature,
         if(need_to_find_index) {   
             // Checks if parcel is already above profile, in which case it 
             // skips the search
-            if(pressure < prof->pres[prof->NZ - 1]) {
-                profile_index_0 = prof->NZ - 1;
+            if(pressure < pressure_arr[N - 1]) {
+                profile_index_0 = N - 1;
             }
 
-            for(int i = 0; i < prof->NZ - 1; i++) {
-                float pres_bottom_of_layer = prof->pres[i];
-                float pres_top_of_layer = prof->pres[i + 1];
+            for(int i = 0; i < N - 1; i++) {
+                float pres_bottom_of_layer = pressure_arr[i];
+                float pres_top_of_layer = pressure_arr[i + 1];
 
                 if(pressure <= pres_bottom_of_layer 
                     && pressure > pres_top_of_layer) {
@@ -617,11 +643,11 @@ float moist_adiabat_peters_et_al(float pressure, float temperature,
 
         // Environmental interpolation scheme used here is very simple, but
         // this can be changed later.
-        int profile_index_1 = std::min(profile_index_0 + 1, prof->NZ - 1);
+        int profile_index_1 = std::min(profile_index_0 + 1, (int) N - 1);
         float env_temperature = 
-            (prof->tmpk[profile_index_0] + prof->tmpk[profile_index_1])/2;
-        float qv_0 = specific_humidity(prof->mixr[profile_index_0]);
-        float qv_1 = specific_humidity(prof->mixr[profile_index_1]);
+            (temperature_arr[profile_index_0] + temperature_arr[profile_index_1])/2;
+        float qv_0 = specific_humidity(mixr_arr[profile_index_0]);
+        float qv_1 = specific_humidity(mixr_arr[profile_index_1]);
         float env_qv = (qv_0 + qv_1)/2;
 
         float dz = RDGAS * sharp::virtual_temperature(env_temperature, env_qv) 
