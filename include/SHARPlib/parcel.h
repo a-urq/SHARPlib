@@ -276,9 +276,8 @@ struct lifter_peters_et_al {
             pcl_tmpk = moist_adiabat_peters_et_al(pres, tmpk, new_pres, 
                 this->qv, this->qt, pressure_arr, height_arr, 
                 temperature_arr, dewpoint_arr, u_wind_arr, v_wind_arr, prof_N,
-                this->pressure_incr, 
-                this->entr_rate, this->ma_type, this->mixed_phase_warm, 
-                this->mixed_phase_cold);
+                this->pressure_incr, this->entr_rate, this->ma_type, 
+                this->mixed_phase_warm, this->mixed_phase_cold);
         }
 
         pressure = new_pres;

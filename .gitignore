@@ -52,6 +52,9 @@ _deps
 build
 .cache
 
+# Ignore VSCODE stuff
+.vscode/*
+
 # SWIG python files and wrappers
 src/swig/build
 src/swig/*.egg-info
